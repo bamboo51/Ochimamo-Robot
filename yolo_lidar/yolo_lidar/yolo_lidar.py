@@ -14,6 +14,7 @@ from visualization_msgs.msg import Marker, MarkerArray
 from sensor_msgs.msg import LaserScan, Image, CameraInfo
 from rclpy.duration import Duration
 from geometry_msgs.msg import PointStamped
+from std_msgs.msg import String
 
 class PeopleMapperNode(Node):
     def __init__(self, weights, imgsz, conf_thres):
@@ -22,7 +23,7 @@ class PeopleMapperNode(Node):
         self.vision = VisionSystem(weights, conf_thres, imgsz)
         self.lidar = LidarSystem()
 
-        self.declare_parameter("camera_lidar_yaw", math.pi/2) # +3.1415926 for backward camera
+        self.declare_parameter("camera_lidar_yaw", math.pi/2-0.07*math.pi) # +3.1415926 for backward camera
         self.declare_parameter("target_frame", "odom") #? how to change to map??? 
         self.cam_lidar_yaw = self.get_parameter("camera_lidar_yaw").value
         self.target_frame = self.get_parameter("target_frame").value
@@ -32,6 +33,7 @@ class PeopleMapperNode(Node):
 
         self.marker_pub = self.create_publisher(MarkerArray, "/people_markers", 10)
         self.debug_image_pub = self.create_publisher(Image, "/people_mapper/debug_image", 10)
+        self.wall_dist_pub = self.create_publisher(String, "/people/wall_distance", 10)
         self.create_subscription(LaserScan, "/scan", self.lidar.update_scan, qos_profile_sensor_data)
         self.create_subscription(CameraInfo, "/camera/camera_info", self.vision.set_camera_info, 10)
         self.create_subscription(Image, "/camera/image_raw", self.image_callback, qos_profile_sensor_data)
@@ -90,19 +92,13 @@ class PeopleMapperNode(Node):
         self.get_logger().info("Image received")
         
         # 角度を計算
-        person_angles, annotated_frame= self.vision.detect_people_angles(img_np)
-        if not person_angles:
-            self.get_logger().info("No detections")
-            return
-        else:
-            self.get_logger().info(f"Detected {len(person_angles)} people")
-
+        people_dict, annotated_frame= self.vision.detect_people_angles(img_np)
         if self.debug_image_pub.get_subscription_count() > 0:
-            try:
-                debug_msg = self.cv2_to_imgmsg(annotated_frame, encoding="bgr8")
-                self.debug_image_pub.publish(debug_msg)
-            except Exception as e:
-                self.get_logger().warn(f"Failed to publish debug image: {e}")
+            msg = self.cv2_to_imgmsg(annotated_frame)
+            self.debug_image_pub.publish(img_np)
+        if not people_dict:
+            self.get_logger().info("No peopled detected")
+            return
 
         if self.lidar.latest_scan is None:
             self.get_logger().warn("No LiDAR data yet!")
@@ -115,12 +111,22 @@ class PeopleMapperNode(Node):
         scan_frame_id = self.lidar.latest_scan.header.frame_id
         m_id = 0
 
-        for theta in person_angles:
+        for track_id, theta in people_dict.items():
             result = self.lidar.get_distance_at_angle(theta, self.cam_lidar_yaw)
 
             if result:
                 dist, final_angle = result
-                self.get_logger().info(f"Person at distance: {dist:.2f}m")
+                self.get_logger().info(f"Person ID {track_id} is at {dist:.2f}m")
+
+                # 人と壁の距離を計算
+                nearest_wall = self.lidar.get_min_distance_to_sur(theta, dist, self.cam_lidar_yaw)
+                if nearest_wall:
+                    self.get_logger().info(f"Person {track_id}. Nearest wall is {nearest_wall}")
+
+                    msg = String()
+                    msg.data = f"{track_id}:{nearest_wall:.2f}" 
+                    self.wall_dist_pub.publish(msg)
+
 
                 # 角度座標→直径座標
                 x_l = dist * math.cos(final_angle)
@@ -129,6 +135,7 @@ class PeopleMapperNode(Node):
                 # LiDARフレーム→地図フレーム
                 pt_lidar = PointStamped()
                 pt_lidar.header.stamp = rclpy.time.Time().to_msg()
+                # pt_lidar.header.stamp = scan_time
                 pt_lidar.header.frame_id = self.lidar.latest_scan.header.frame_id
                 pt_lidar.point.x = x_l
                 pt_lidar.point.y = y_l
@@ -171,7 +178,7 @@ class PeopleMapperNode(Node):
 def main():
     rclpy.init()
     # Hardcoded args for Pi 4 performance
-    node = PeopleMapperNode(weights="yolo11n.mnn", imgsz=320, conf_thres=0.4)
+    node = PeopleMapperNode(weights="yolo11n.mnn", imgsz=320, conf_thres=0.9)
     rclpy.spin(node)
     rclpy.shutdown()
 
