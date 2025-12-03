@@ -1,0 +1,31 @@
+running egg_info
+creating ../../build/ble_warn/ble_warn.egg-info
+writing ../../build/ble_warn/ble_warn.egg-info/PKG-INFO
+writing dependency_links to ../../build/ble_warn/ble_warn.egg-info/dependency_links.txt
+writing entry points to ../../build/ble_warn/ble_warn.egg-info/entry_points.txt
+writing requirements to ../../build/ble_warn/ble_warn.egg-info/requires.txt
+writing top-level names to ../../build/ble_warn/ble_warn.egg-info/top_level.txt
+writing manifest file '../../build/ble_warn/ble_warn.egg-info/SOURCES.txt'
+reading manifest file '../../build/ble_warn/ble_warn.egg-info/SOURCES.txt'
+writing manifest file '../../build/ble_warn/ble_warn.egg-info/SOURCES.txt'
+running build
+running build_py
+creating /home/pongs/ble_warn/turtlebot/build/ble_warn/build
+creating /home/pongs/ble_warn/turtlebot/build/ble_warn/build/lib
+creating /home/pongs/ble_warn/turtlebot/build/ble_warn/build/lib/ble_warn
+copying ble_warn/__init__.py -> /home/pongs/ble_warn/turtlebot/build/ble_warn/build/lib/ble_warn
+running install
+running install_lib
+creating /home/pongs/ble_warn/turtlebot/install/ble_warn/lib/python3.10/site-packages/ble_warn
+copying /home/pongs/ble_warn/turtlebot/build/ble_warn/build/lib/ble_warn/__init__.py -> /home/pongs/ble_warn/turtlebot/install/ble_warn/lib/python3.10/site-packages/ble_warn
+byte-compiling /home/pongs/ble_warn/turtlebot/install/ble_warn/lib/python3.10/site-packages/ble_warn/__init__.py to __init__.cpython-310.pyc
+running install_data
+creating /home/pongs/ble_warn/turtlebot/install/ble_warn/share/ament_index
+creating /home/pongs/ble_warn/turtlebot/install/ble_warn/share/ament_index/resource_index
+creating /home/pongs/ble_warn/turtlebot/install/ble_warn/share/ament_index/resource_index/packages
+copying resource/ble_warn -> /home/pongs/ble_warn/turtlebot/install/ble_warn/share/ament_index/resource_index/packages
+copying package.xml -> /home/pongs/ble_warn/turtlebot/install/ble_warn/share/ble_warn
+running install_egg_info
+Copying ../../build/ble_warn/ble_warn.egg-info to /home/pongs/ble_warn/turtlebot/install/ble_warn/lib/python3.10/site-packages/ble_warn-0.0.0-py3.10.egg-info
+running install_scripts
+writing list of installed files to '/home/pongs/ble_warn/turtlebot/build/ble_warn/install.log'

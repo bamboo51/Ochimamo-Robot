@@ -1,0 +1,33 @@
+[0.816s] Invoking command in '/home/pongs/ble_warn/turtlebot/src/ble_warn': CONDA_PROMPT_MODIFIER=(base) PYTHONPATH=/home/pongs/ble_warn/turtlebot/build/ble_warn/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/pongs/ble_warn/turtlebot/install/ble_warn/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py egg_info --egg-base ../../build/ble_warn build --build-base /home/pongs/ble_warn/turtlebot/build/ble_warn/build install --record /home/pongs/ble_warn/turtlebot/build/ble_warn/install.log --single-version-externally-managed install_data
+[1.107s] running egg_info
+[1.107s] creating ../../build/ble_warn/ble_warn.egg-info
+[1.107s] writing ../../build/ble_warn/ble_warn.egg-info/PKG-INFO
+[1.108s] writing dependency_links to ../../build/ble_warn/ble_warn.egg-info/dependency_links.txt
+[1.108s] writing entry points to ../../build/ble_warn/ble_warn.egg-info/entry_points.txt
+[1.108s] writing requirements to ../../build/ble_warn/ble_warn.egg-info/requires.txt
+[1.108s] writing top-level names to ../../build/ble_warn/ble_warn.egg-info/top_level.txt
+[1.108s] writing manifest file '../../build/ble_warn/ble_warn.egg-info/SOURCES.txt'
+[1.110s] reading manifest file '../../build/ble_warn/ble_warn.egg-info/SOURCES.txt'
+[1.111s] writing manifest file '../../build/ble_warn/ble_warn.egg-info/SOURCES.txt'
+[1.111s] running build
+[1.111s] running build_py
+[1.111s] creating /home/pongs/ble_warn/turtlebot/build/ble_warn/build
+[1.111s] creating /home/pongs/ble_warn/turtlebot/build/ble_warn/build/lib
+[1.111s] creating /home/pongs/ble_warn/turtlebot/build/ble_warn/build/lib/ble_warn
+[1.111s] copying ble_warn/__init__.py -> /home/pongs/ble_warn/turtlebot/build/ble_warn/build/lib/ble_warn
+[1.111s] running install
+[1.111s] running install_lib
+[1.112s] creating /home/pongs/ble_warn/turtlebot/install/ble_warn/lib/python3.10/site-packages/ble_warn
+[1.112s] copying /home/pongs/ble_warn/turtlebot/build/ble_warn/build/lib/ble_warn/__init__.py -> /home/pongs/ble_warn/turtlebot/install/ble_warn/lib/python3.10/site-packages/ble_warn
+[1.113s] byte-compiling /home/pongs/ble_warn/turtlebot/install/ble_warn/lib/python3.10/site-packages/ble_warn/__init__.py to __init__.cpython-310.pyc
+[1.113s] running install_data
+[1.113s] creating /home/pongs/ble_warn/turtlebot/install/ble_warn/share/ament_index
+[1.113s] creating /home/pongs/ble_warn/turtlebot/install/ble_warn/share/ament_index/resource_index
+[1.113s] creating /home/pongs/ble_warn/turtlebot/install/ble_warn/share/ament_index/resource_index/packages
+[1.113s] copying resource/ble_warn -> /home/pongs/ble_warn/turtlebot/install/ble_warn/share/ament_index/resource_index/packages
+[1.113s] copying package.xml -> /home/pongs/ble_warn/turtlebot/install/ble_warn/share/ble_warn
+[1.113s] running install_egg_info
+[1.115s] Copying ../../build/ble_warn/ble_warn.egg-info to /home/pongs/ble_warn/turtlebot/install/ble_warn/lib/python3.10/site-packages/ble_warn-0.0.0-py3.10.egg-info
+[1.115s] running install_scripts
+[1.138s] writing list of installed files to '/home/pongs/ble_warn/turtlebot/build/ble_warn/install.log'
+[1.162s] Invoked command in '/home/pongs/ble_warn/turtlebot/src/ble_warn' returned '0': CONDA_PROMPT_MODIFIER=(base) PYTHONPATH=/home/pongs/ble_warn/turtlebot/build/ble_warn/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/pongs/ble_warn/turtlebot/install/ble_warn/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py egg_info --egg-base ../../build/ble_warn build --build-base /home/pongs/ble_warn/turtlebot/build/ble_warn/build install --record /home/pongs/ble_warn/turtlebot/build/ble_warn/install.log --single-version-externally-managed install_data
