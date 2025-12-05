@@ -25,3 +25,14 @@ ros2 run camera_ros camera_node --ros-args -p format:='RGB888' -p width:=320 -p 
 cd ~
 ros2 run people_mapper_pkg people_mapper_node
 ```
+
+## 結果の可視化
+- ROS搭載のパソコンをRaspberryPiと同じネットワークで接続している状態で実装する。
+```bash
+# RViz2を使用
+ros2 run rviz2 rviz2
+```
+- Mapではなく、Odometryを情報源に設定
+- センサーの情報を読み取り、ロボット本体の周りに物が置かれていることがわかる
+- Painterを`/people_markers`に聞くよう変更
+- 大きく赤い球が表示されたところは、人間が検出されたところ
