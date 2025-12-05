@@ -16,7 +16,7 @@
 
 - このノードに動かしたい場合は、
 ``` bash
-# ~/yolo_lidar/src/で実行
+# ~/ble_warnで実行
 # パッケージをビルド
 # RaspberryPi上でパイがすでにビルドしたので、改めて実行する必要はない
 colcon build
