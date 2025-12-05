@@ -1,7 +1,7 @@
-# おちまものTurtlebot3
+# おちまものTurtlebot3 | LiDAR・カメラ編
 このbranchは、LiDARから読み取ったセンサーの値とカメラから読み取った画像を組み合わせ、人がいる位置を推定する。
 
-# ソースコードの確認
+## ソースコードの確認
 > おすすめな方法は、VSCodeでリモート修正を行う。
 > ref: https://qiita.com/ist-sh-ha/items/359df9097cf14d2f7868
 
