@@ -1,202 +1,246 @@
 import asyncio
+import threading
+import logging
+import time
+from typing import Optional, Dict, Tuple, Any
+
 import rclpy
 from rclpy.node import Node
-from rclpy.time import Time
+from rclpy.executors import SingleThreadedExecutor
 from std_msgs.msg import String
-from bless import BlessServer, GATTCharacteristicProperties, GATTAttributePermissions
-import logging
-import threading
 
-# Configs
-SERVICE_UUID = "0000abcd-0000-1000-8000-00805f9b34fb"
-CHARACTERISTIC_UUID = "00001234-0000-1000-8000-00805f9b34fb"
+from dbus_next.aio.message_bus import MessageBus
+from dbus_next.service import ServiceInterface, method, dbus_property
+from dbus_next.signature import Variant
+from dbus_next.constants import BusType, PropertyAccess
+
+# ============================================================
+# CONFIG
+# ============================================================
+LE_ADVERTISEMENT_IFACE = 'org.bluez.LEAdvertisement1'
+DBUS_OM_IFACE = 'org.freedesktop.DBus.ObjectManager'
+DBUS_PROP_IFACE = 'org.freedesktop.DBus.Properties'
+
+BLUEZ_SERVICE_NAME = 'org.bluez'
+ADVERTISING_MANAGER_IFACE = 'org.bluez.LEAdvertisingManager1'
+
+# Beacon Settings
 DANGER_DISTANCE = 0.55
-STALE_DATA_TIMEOUT = 2.0 # seconds - remove track IDs
+STALE_DATA_TIMEOUT = 2.0
 MAX_TRACK_IDS = 8
+MANUFACTURER_ID = 0xCCCC
 
-class DangerBroadcaster(Node):
-    def __init__(self):
-        super().__init__('ble_warn')
-        self.subscription = self.create_subscription(
-            String, "/people/wall_distance", self.distance_callback, 10
-        )
 
-        # thread-safe data structures
-        self.lock = threading.Lock()
-        self.latest_distances = {} # {track_id: {'distance': float, 'timestamp': Time}}
-        self.current_mask = 0x00
+# ============================================================
+# DBUS ADVERTISEMENT CLASS
+# ============================================================
+class DangerAdvertisement(ServiceInterface):
+    def __init__(self, index):
+        super().__init__(LE_ADVERTISEMENT_IFACE)
+        self.index = index
+        self._type = 'broadcast'
+        self._local_name = 'DANGER'
+        self._manufacturer_data = {MANUFACTURER_ID: bytes([0x00])}
+        self.path = f'/org/bluez/example/advertisement{index}'
 
-        logging.basicConfig(level=logging.INFO)
-        self.get_logger().info("Risk Broadcaster Started.")
-    
-    def distance_callback(self, msg):
-        """Parse incoming distance messages and store with timestamp"""
-        try:
-            if ":" not in msg.data:
-                self.get_logger().warn(f"invalid message format: {msg.data}")
-                return
+    def update_mask(self, mask: int):
+        new_data = {MANUFACTURER_ID: bytes([mask & 0xFF])}
+        print(f">>> BLE UPDATE: ID=0x{MANUFACTURER_ID:04X} Data=[0x{mask:02X}]")
+
+        self._manufacturer_data = new_data
         
-            parts = msg.data.split(":")
-            if len(parts) != 2:
-                self.get_logger().warn(f"Expected 2 parts, got {len(parts)}: {msg.data}")
-                return
-            
-            track_id = int(parts[0])
-            dist = float(parts[1])
+        # Signal DBus that properties changed so BlueZ updates the packet
+        self.emit_properties_changed({
+            'ManufacturerData': {
+                k: Variant('ay', v) for k, v in self._manufacturer_data.items()
+            }
+        })
 
-            if track_id <= 0:
-                self.get_logger().warn(f"Invalid track_id: {track_id}")
-                return
-            if track_id > MAX_TRACK_IDS:
-                self.get_logger().warn(f"Track ID {track_id} exceeds max {MAX_TRACK_IDS}, ignoring")
-                return
-            
-            with self.lock:
-                self.latest_distances[track_id] = {
-                    'distance': dist,
-                    'timestamp': self.get_clock().now()
-                }
-        except ValueError as e:
-            self.get_logger().warn(f"Parse error in {msg.data}: {e}")
+    @method()
+    def Release(self):
+        logging.info(f'{self.path}: Released!')
+
+    @dbus_property(access=PropertyAccess.READ)
+    def Type(self) -> 's':
+        return self._type
+
+    @dbus_property(access=PropertyAccess.READ)
+    def LocalName(self) -> 's':
+        return self._local_name
+
+    @dbus_property(access=PropertyAccess.READ)
+    def ManufacturerData(self) -> 'a{qv}':
+        return {
+            k: Variant('ay', v) for k, v in self._manufacturer_data.items()
+        }
+
+
+# ============================================================
+# BLE THREAD
+# ============================================================
+class BLEThread(threading.Thread):
+    def __init__(self):
+        super().__init__(daemon=True)
+        self.loop: Optional[asyncio.AbstractEventLoop] = None
+        self.ready = threading.Event()
+        self.stop_event = threading.Event()
+        self.advertisement: Optional[DangerAdvertisement] = None
+        self.bus: Optional[MessageBus] = None
+        self.manager = None
+        self.adapter_path = '/org/bluez/hci0'
+
+    def run(self):
+        self.loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(self.loop)
+        try:
+            self.loop.run_until_complete(self._run())
         except Exception as e:
-            self.get_logger().error(f"Unexpected error in distance_callback: {e}")
+            logging.error(f"BLE thread crashed: {e}")
+        finally:
+            self.loop.run_until_complete(self._cleanup())
+            self.loop.close()
 
-    def compute_danger_mask(self):
-        """
-        Returns a single byte where each bit represents a danger flag for an ID:
-        Bit 0 = ID 1, Bit 1 = ID 2, etc.
-        Also removes stale entries.
-        """
-        mask = 0x00
-        current_time = self.get_clock().now()
+    async def _run(self):
+        self.bus = await MessageBus(bus_type=BusType.SYSTEM).connect()
+        
+        # Setup Advertisement Object
+        self.advertisement = DangerAdvertisement(0)
+        self.bus.export(self.advertisement.path, self.advertisement)
 
+        # Register with BlueZ Advertising Manager
+        intr = await self.bus.introspect(BLUEZ_SERVICE_NAME, self.adapter_path)
+        proxy = self.bus.get_proxy_object(BLUEZ_SERVICE_NAME, self.adapter_path, intr)
+        self.manager = proxy.get_interface(ADVERTISING_MANAGER_IFACE)
+
+        logging.info("Registering Advertisement...")
+        await self.manager.call_register_advertisement(
+            self.advertisement.path,
+            {}
+        )
+        
+        logging.info("BLE Beacon Active.")
+        self.ready.set()
+
+        while not self.stop_event.is_set():
+            await asyncio.sleep(0.5)
+
+    async def _cleanup(self):
+        # Unregister advertisement
+        if self.manager and self.advertisement:
+            try:
+                await self.manager.call_unregister_advertisement(self.advertisement.path)
+                logging.info("Advertisement unregistered")
+            except Exception as e:
+                logging.warning(f"Failed to unregister advertisement: {e}")
+        
+        if self.bus:
+            self.bus.disconnect()
+
+    def update_mask(self, mask: int):
+        if self.loop and self.loop.is_running() and self.advertisement:
+            self.loop.call_soon_threadsafe(self.advertisement.update_mask, mask)
+
+    def stop(self):
+        self.stop_event.set()
+
+
+# ============================================================
+# ROS NODE
+# ============================================================
+class DangerBroadcaster(Node):
+    def __init__(self, ble: BLEThread):
+        super().__init__("ble_warn")
+        self.ble = ble
+        self.lock = threading.Lock()
+        self.latest: Dict[int, Tuple[float, float]] = {}
+        self.last_mask = 0
+        self.last_update_time = time.time()
+
+        self.create_subscription(String, "/people/wall_distance", self.distance_callback, 10)
+        self.create_timer(0.1, self.update_ble)
+        self.get_logger().info("ROS2 BLE Broadcaster running")
+
+    def distance_callback(self, msg: String):
+        try:
+            tid_s, dist_s = msg.data.split(":")
+            tid = int(tid_s)
+            dist = float(dist_s)
+            if 1 <= tid <= MAX_TRACK_IDS:
+                with self.lock:
+                    self.latest[tid] = (dist, time.monotonic())
+        except Exception as e:
+            self.get_logger().debug(f"Failed to parse distance message: {e}")
+
+    def compute_mask(self) -> int:
+        now = time.monotonic()
+        mask = 0
         with self.lock:
-            stale_ids = []
-
-            for track_id, data in self.latest_distances.items():
-                age_ns = (current_time.nanoseconds - data['timestamp'].nanoseconds)
-                age_sec = age_ns / 1e9
-
-                if age_sec > STALE_DATA_TIMEOUT:
-                    stale_ids.append(track_id)
-                    continue
-
-                if data['distance'] < DANGER_DISTANCE:
-                    bit_position = track_id - 1
-                    if 0<=bit_position<8:
-                        mask |= (1<<bit_position)
-            
-            for track_id in stale_ids:
-                self.get_logger().info(f"Removing stale track_id: {track_id}")
-                del self.latest_distances[track_id]
+            expired = []
+            for tid, (dist, ts) in self.latest.items():
+                if now - ts > STALE_DATA_TIMEOUT:
+                    expired.append(tid)
+                elif dist < DANGER_DISTANCE:
+                    mask |= (1 << (tid - 1))
+            for tid in expired:
+                del self.latest[tid]
         return mask & 0xFF
 
-async def run(node, loop):
-    node.get_logger().info("Initializing BLE Server")
-
-    server = BlessServer(name="DANGER_BEACON", loop=loop)
-
-    try:
-        await server.add_new_service(SERVICE_UUID)
-        char_flags = (
-            GATTCharacteristicProperties.read |
-            GATTCharacteristicProperties.notify |
-            GATTCharacteristicProperties.indicate
-        )
-        permissions = (
-            GATTAttributePermissions.readable |
-            GATTAttributePermissions.writeable
-        )
-
-        await server.add_new_characteristic(
-            SERVICE_UUID,
-            CHARACTERISTIC_UUID,
-            char_flags,
-            value=b'\x00',
-            permissions=permissions
-        )
-
-        node.get_logger().info("Starting BLE Advertising")
-        await server.start()
-        node.get_logger().info("BLE Advertising Active!")
-
-        while rclpy.ok():
-            rclpy.spin_once(node, timeout_sec=0)
-            new_mask = node.compute_danger_mask()
-
-            if new_mask != node.current_mask:
-                node.current_mask = new_mask
-                node.get_logger().info(
-                    f"Danger Mask Updated: {bin(new_mask)} (0x{new_mask:02X})"
-                )
-
-                value_byte = bytes([new_mask])
-
-                characteristic = server.get_characteristic(CHARACTERISTIC_UUID)
-                if characteristic:
-                    characteristic.value = value_byte
-
-                    #notify connected clients
-                    server.update_value(SERVICE_UUID, CHARACTERISTIC_UUID)
+    def update_ble(self):
+        mask = self.compute_mask()
+        now = time.time()
+        
+        # Send if: mask changed OR 1 second passed (heartbeat)
+        time_since_last = now - self.last_update_time
+        mask_changed = (mask != self.last_mask)
+        need_heartbeat = (time_since_last >= 1.0)
+        
+        if mask_changed or need_heartbeat:
+            # Update BLE
+            self.ble.update_mask(mask)
+            self.last_update_time = now
+            
+            # Only log if mask actually changed (not for heartbeats)
+            if mask_changed:
+                if mask:
+                    self.get_logger().warn(f"DANGER mask 0x{mask:02X}")
                 else:
-                    node.get_logger().error("Failed to get characteristic")
-            await asyncio.sleep(0.1)
+                    self.get_logger().info("Zone clear")
+                self.last_mask = mask
 
-    except asyncio.CancelledError:
-        node.get_logger().info("Async task cancelled")
-    except KeyboardInterrupt:
-        node.get_logger().info("Keyboard interrupt received")
-    except Exception as e:
-        node.get_logger().error(f"Error in main loop: {e}")
-    finally:
-        node.get_logger().info("Cleaning up...")
-        try:
-            await server.stop()
-        except Exception as e:
-            node.get_logger().error(f"Error during cleanup: {e}")
-            if "Event loop is closed" not in str(e):
-                node.get_logger().error(f"Error during BLE cleanup: {e}")
 
-def main(args=None):
-    rclpy.init(args=args)
-    node = DangerBroadcaster()
+# ============================================================
+# MAIN
+# ============================================================
+def main():
+    logging.basicConfig(level=logging.INFO)
+    
+    # Start BLE Thread
+    ble = BLEThread()
+    ble.start()
 
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    main_task = None
+    if not ble.ready.wait(timeout=10):
+        logging.error("BLE Failed to start (Is bluetoothd running?)")
+    
+    # Start ROS Node
+    rclpy.init()
+    node = DangerBroadcaster(ble)
+    executor = SingleThreadedExecutor()
+    executor.add_node(node)
 
     try:
-        main_task = loop.create_task(run(node, loop))
-        loop.run_until_complete(main_task)
+        executor.spin()
     except KeyboardInterrupt:
-        node.get_logger().info("Shutdown requested")
-        if main_task and not main_task.done():
-            main_task.cancel()
-            try:
-                loop.run_until_complete(main_task)
-            except asyncio.CancelledError:
-                pass
-    except Exception as e:
-        print(f"Error: {e}")
+        pass
     finally:
-        # Clean up ROS
-        try:
-            if not node._handle.pointer == 0:  # Check if node is still valid
-                node.destroy_node()
-        except Exception:
-            pass
+        # Stop the ROS executor (stops callbacks)
+        executor.shutdown()
+        node.destroy_node()
         
-        try:
-            if rclpy.ok():
-                rclpy.shutdown()
-        except Exception:
-            pass
-        
-        # Close event loop last
-        try:
-            loop.close()
-        except Exception:
-            pass
+        if rclpy.ok():
+            rclpy.shutdown()
+            
+        ble.stop()
+        ble.join(timeout=2)
 
 if __name__ == "__main__":
     main()
