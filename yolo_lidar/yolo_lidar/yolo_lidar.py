@@ -6,7 +6,7 @@ from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
 
 from .vision import VisionSystem
-from .lidar import LidarSystem
+from .lidar import LidarSystemHough as LidarSystem
 
 import tf2_geometry_msgs
 from tf2_ros import Buffer, TransformListener
@@ -34,11 +34,57 @@ class PeopleMapperNode(Node):
         self.marker_pub = self.create_publisher(MarkerArray, "/people_markers", 10)
         self.debug_image_pub = self.create_publisher(Image, "/people_mapper/debug_image", 10)
         self.wall_dist_pub = self.create_publisher(String, "/people/wall_distance", 10)
+        self.wall_pub = self.create_publisher(MarkerArray, "/wall_markers", 10)
+        self.vector_pub = self.create_publisher(Marker, 'distance_vector', 10)
+
         self.create_subscription(LaserScan, "/scan", self.lidar.update_scan, qos_profile_sensor_data)
         self.create_subscription(CameraInfo, "/camera/camera_info", self.vision.set_camera_info, 10)
         self.create_subscription(Image, "/camera/image_raw", self.image_callback, qos_profile_sensor_data)
+        
+        self.create_timer(0.1, self.wall_pub_func)
 
         self.get_logger().info("People Mapper Started.")
+
+    def wall_pub_func(self):
+        if self.lidar.is_calibrated and self.lidar.latest_scan:
+            # now = self.get_clock().now().to_msg()
+            frame = self.lidar.latest_scan.header.frame_id
+            wall_markers = self.lidar.get_wall_markers(self.lidar.latest_scan.header.stamp, frame)
+            self.wall_pub.publish(wall_markers)
+
+    def publish_dist_vector(self, publisher_node, person_point, wall_point):
+        """
+        Draws a vector from the person to the wall
+        """
+        if person_point is None or wall_point is None:
+            return
+
+        marker = Marker()
+        marker.header.frame_id = self.lidar.latest_scan.header.frame_id
+        marker.header.stamp = self.lidar.latest_scan.header.stamp
+        marker.ns = "distance_vector"
+        marker.id = 0
+        marker.type = Marker.ARROW
+        marker.action = Marker.ADD
+
+        # arrow dimensions
+        marker.scale.x = 0.05
+        marker.scale.y = 0.1
+        marker.scale.z = 0.1
+
+        marker.color.r = 0.0
+        marker.color.g = 1.0
+        marker.color.b = 1.0
+        marker.color.a = 1.0
+
+        marker.lifetime.sec = 0
+        marker.lifetime.nanosec = 200000000
+
+        p_start = Point(x=float(person_point[0]), y=float(person_point[1]), z=0.0)
+        p_end = Point(x=float(wall_point[0]), y=float(wall_point[1]), z=0.0)
+        marker.points.append(p_start)
+        marker.points.append(p_end)
+        publisher_node.publish(marker)
 
     def imgmsg_to_cv2(self, msg):
         """
@@ -88,6 +134,7 @@ class PeopleMapperNode(Node):
             img_np = self.imgmsg_to_cv2(msg)
         except Exception:
             return
+        
         img_np = cv2.rotate(img_np, cv2.ROTATE_90_COUNTERCLOCKWISE)
         self.get_logger().info("Image received")
         
@@ -119,13 +166,14 @@ class PeopleMapperNode(Node):
                 self.get_logger().info(f"Person ID {track_id} is at {dist:.2f}m")
 
                 # 人と壁の距離を計算
-                nearest_wall = self.lidar.get_min_distance_to_sur(theta, dist, self.cam_lidar_yaw)
+                nearest_wall, p_coords, w_coords = self.lidar.get_min_distance_to_sur(theta, dist, self.cam_lidar_yaw)
                 if nearest_wall:
                     self.get_logger().info(f"Person {track_id}. Nearest wall is {nearest_wall}")
 
                     msg = String()
                     msg.data = f"{track_id}:{nearest_wall:.2f}" 
                     self.wall_dist_pub.publish(msg)
+                    self.publish_dist_vec(self, p_coords, w_coords)
 
 
                 # 角度座標→直径座標
@@ -178,7 +226,7 @@ class PeopleMapperNode(Node):
 def main():
     rclpy.init()
     # Hardcoded args for Pi 4 performance
-    node = PeopleMapperNode(weights="yolo11n.mnn", imgsz=320, conf_thres=0.9)
+    node = PeopleMapperNode(weights="yolo26n.mnn", imgsz=640, conf_thres=0.9)
     rclpy.spin(node)
     rclpy.shutdown()
 

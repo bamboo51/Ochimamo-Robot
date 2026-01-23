@@ -1,6 +1,6 @@
 from setuptools import find_packages, setup
 
-package_name = 'yolo_lidar'
+package_name = 'people_mapper_pkg'
 
 setup(
     name=package_name,
@@ -13,8 +13,8 @@ setup(
     ],
     install_requires=['setuptools'],
     zip_safe=True,
-    maintainer='pongs',
-    maintainer_email='pongsatorn2548self@gmail.com',
+    maintainer='ubuntu',
+    maintainer_email='ubuntu@todo.todo',
     description='TODO: Package description',
     license='TODO: License declaration',
     extras_require={
@@ -24,6 +24,7 @@ setup(
     },
     entry_points={
         'console_scripts': [
+            'people_mapper_node = people_mapper_pkg.yolo_lidar:main'
         ],
     },
 )

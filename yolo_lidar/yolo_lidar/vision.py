@@ -40,9 +40,8 @@ class VisionSystem:
 
     def _detect_aruco(self, bgr_image):
         gray = cv2.cvtColor(bgr_image, cv2.COLOR_BGR2GRAY)
-        corners, ids, _ = cv2.aruco.detectMarkers(
-            gray, self.aruco_dict, parameters=self.aruco_params
-        )
+        detector = cv2.aruco.ArucoDetector(self.aruco_dict, self.aruco_params)
+        corners, ids, _ = detector.detectMarkers(gray)
 
         markers = {}
         if ids is None:
